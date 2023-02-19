@@ -1,0 +1,137 @@
+---
+title: "Data 607 - Week4 - Project1"
+author: "Glen Dale Davis"
+date: "2023-02-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load the Required Packages
+
+Below, I load the packages required for tidying up and viewing the data.
+
+```{r packages, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(DT)
+
+```
+
+## Load and Clean Up the Raw Chess Tournament Info Data
+
+Below I load the chess tournament info .txt file, replace all -...- lines with $*$, define $*$ as a comment character so those lines can then be skipped completely since they contain no useful info, and define the field separator as $|$ so a (still raw, but better) data frame can be created from the useful tournament info. I also trim whitespace from the data fields.
+
+```{r raw_data, warning = FALSE}
+
+my_url <- "https://raw.githubusercontent.com/geedoubledee/data607_week4/main/tournamentinfo.txt"
+raw_chess_data <- readLines(con = my_url, warn = FALSE)
+raw_chess_data <- str_replace_all(raw_chess_data, "^--*-$", "*")
+writeLines(raw_chess_data, con = "tournamentinfo_altered.txt")
+my_url2 <- "tournamentinfo_altered.txt"
+altered_chess_data <- read.table(file = my_url2, header = TRUE, sep = "|",
+                                 stringsAsFactors = FALSE, fill = TRUE,
+                                 strip.white = TRUE,
+                                 blank.lines.skip = TRUE,
+                                 comment.char = "*")
+as_tibble(altered_chess_data)
+
+```
+
+## Capture Data Fields from the Even and Odd Rows of the Altered Chess Tournament Info Data Frame as Column Vectors
+
+Since there is different information that can be captured from the even rows in my altered data frame than from the odd rows, I loop through them separately below to capture the information I want. Player name, total number of points, and the opponents that player played all come from the even rows. Player state and player pre-rating come from the odd rows.
+
+```{r altered_df_even_and_odd_row_fields, warning = FALSE}
+even_rows <- seq(2, 128, 2)
+player_names <- c()
+total_nums_points <- c()
+opponents_sets <- list()
+count <- 0
+
+for (i in even_rows){
+    count <- count + 1
+    player_name <- altered_chess_data[[i, 2]]
+    player_names <- append(player_names, player_name)
+    total_num_points <- altered_chess_data[[i, 3]]
+    total_nums_points <- append(total_nums_points, total_num_points)
+    opponents_set <- c()
+    for (j in 4:10){
+        opponent <- altered_chess_data[[i, j]]
+        opponent <- as.integer(str_replace(opponent, ". ", ""))
+        opponents_set <- append(opponents_set, opponent)
+    }
+    opponents_sets[[count]] <- opponents_set
+}
+
+odd_rows <- seq(3, 129, 2)
+player_states <- c()
+player_pre_ratings <- c()
+
+for (i in odd_rows){
+    player_state <- altered_chess_data[[i, 1]]
+    player_states <- append(player_states, player_state)
+    player_pre_rating <- altered_chess_data[[i, 2]]
+    player_pre_rating <- str_replace(player_pre_rating, ".*R: ", "")
+    player_pre_rating <- str_replace(player_pre_rating, "P[0-9]*", "")
+    player_pre_rating <- str_replace(player_pre_rating, "->.*", "")
+    player_pre_rating <- as.integer(trimws(player_pre_rating))
+    player_pre_ratings <- append(player_pre_ratings, player_pre_rating)
+}
+
+```
+
+## Calculate The Average Pre-Chess Rating of the Opponents for Each Player and Store Info in Column Vector
+
+Below I use the sets of opponents I captured earlier for each player to determine the average pre-chess rating of that player's opponents. This is the final column vector needed to create the proper chess tournament results data frame I've been working toward. 
+
+```{r avg_pre_chess_rating_vector}
+avg_pre_chess_ratings_of_opponents <- c()
+
+for (i in 1:length(opponents_sets)){
+    set <- opponents_sets[[i]]
+    ratings <- c()
+    for (j in set){
+        if (!is.na(j)){
+            rating <- player_pre_ratings[j]
+            ratings <- append(ratings, rating)
+        }
+    }
+    avg_pre_chess_rating_of_opponents <- round(mean(ratings))
+    avg_pre_chess_ratings_of_opponents <-
+        append(avg_pre_chess_ratings_of_opponents,
+               avg_pre_chess_rating_of_opponents)
+}
+
+```
+
+## Combine the Column Vectors into a Final Chess Tournament Results Data Frame
+
+Now the column vectors can be combined into the final chess tournament results data frame, from which I create a data table and display 15 rows at a time. 
+
+```{r final_chess_tournament_df}
+
+chess_df <- as.data.frame(
+    cbind(player_names, player_states, total_nums_points,
+          player_pre_ratings, avg_pre_chess_ratings_of_opponents))
+cols <- c("Player_Name", "Player_State", "Total_Number_of_Points",
+          "Player_Pre_Rating", "Average_Pre_Chess_Rating_of_Opponents")
+colnames(chess_df) <- cols
+chess_df$Player_Pre_Rating <- as.integer(chess_df$Player_Pre_Rating)
+chess_df$Average_Pre_Chess_Rating_of_Opponents <- as.integer(
+    chess_df$Average_Pre_Chess_Rating_of_Opponents)
+datatable(chess_df, options = list(pageLength = 15))
+
+```
+
+## Export the Final Chess Tournament Results Data Frame
+
+Now the final chess tournament results data frame can be exported to .csv.
+
+
+```{r export_csv}
+
+write.csv(chess_df, "chess_tournament_results.csv")
+
+```
